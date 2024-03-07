@@ -14,13 +14,14 @@ if [ -f ./lib/libgs.a ]; then
   exit 0
 fi
 
-if [ ! -d ./gslib ]; then
+if [ ! -d ./gslib_v$VER ]; then
+  rm -rf ./gslib* 2>/dev/null
   wget --no-check-certificate -O v$VER.tar.gz http://github.com/gslib/gslib/archive/v$VER.tar.gz
-  mkdir gslib
-  tar -zxvf v$VER.tar.gz -C ./gslib --strip-components=1
+  mkdir gslib_v$VER
+  tar -zxvf v$VER.tar.gz -C ./gslib_v$VER --strip-components=1
 fi
 
-cd gslib
+cd gslib_v$VER
 set -x
 make -j4 $GSLIB_OPT
 set +x
