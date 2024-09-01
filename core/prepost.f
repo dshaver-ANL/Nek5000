@@ -899,7 +899,38 @@ c-----------------------------------------------------------------------
       call err_chk(ierr,'Error opening file in mfo_open_files. $')
       call bcast(ifxyo_,lsize)
       ifxyo = ifxyo_
-      call mfo_write_hdr                          ! including element mapping
+
+      call blank(rdcode1,10)
+      i = 1
+      IF (IFXYO) THEN
+         rdcode1(i)='X'
+         i = i + 1
+      ENDIF
+      IF (IFVO) THEN
+         rdcode1(i)='U'
+         i = i + 1
+      ENDIF
+      IF (IFPO) THEN
+         rdcode1(i)='P'
+         i = i + 1
+      ENDIF
+      IF (IFTO) THEN
+         rdcode1(i)='T'
+         i = i + 1
+      ENDIF
+      IF (LDIMT.GT.1) THEN
+         NPSCALO = 0
+         do k = 1,ldimt-1
+           if(ifpsco(k)) NPSCALO = NPSCALO + 1
+         enddo
+         IF (NPSCALO.GT.0) THEN
+            rdcode1(i) = 'S'
+            WRITE(rdcode1(i+1),'(I1)') NPSCALO/10
+            WRITE(rdcode1(i+2),'(I1)') NPSCALO-(NPSCALO/10)*10
+         ENDIF
+      ENDIF
+
+      call mfo_write_hdr(rdcode1) ! including element mapping
 
       nxyzo8  = nxo*nyo*nzo
 
@@ -1528,6 +1559,8 @@ c-----------------------------------------------------------------------
       integer cnt 
       integer lbuf 
 
+      real umin(3), umax(3)
+
       call nekgsync() ! clear outstanding message queues.
 
       nxyz = lx1*ly1*lz1
@@ -1536,6 +1569,11 @@ c-----------------------------------------------------------------------
       lsend = 4 * (1 + n*nelt)
       ierr = 0
 
+      do i = 1,3
+        umin(i) = 1e30
+        umax(i) = -umin(i)
+      enddo
+
       ! Am I an I/O node?
       if (nid.eq.pid0) then
          j = 1
@@ -1543,13 +1581,25 @@ c-----------------------------------------------------------------------
          do e=1,nel
             if(out_mask(e).ne.0) then
               buffer(j+0) = vlmin(u(1,e),nxyz) 
+              umin(1) = min(buffer(j+0), umin(1))
+
               buffer(j+1) = vlmax(u(1,e),nxyz)
+              umax(1) = max(buffer(j+1), umax(1))
+
               buffer(j+2) = vlmin(v(1,e),nxyz) 
+              umin(2) = min(buffer(j+2), umin(2))
+
               buffer(j+3) = vlmax(v(1,e),nxyz)
+              umax(2) = max(buffer(j+3), umax(2))
+
               j = j + 4
               if(if3d) then
                 buffer(j+0) = vlmin(w(1,e),nxyz) 
+                umin(3) = min(buffer(j+0), umin(3))
+
                 buffer(j+1) = vlmax(w(1,e),nxyz)
+                umax(3) = max(buffer(j+1), umax(3))
+
                 j = j + 2
               endif
               cnt = cnt + 1
@@ -1588,13 +1638,25 @@ c-----------------------------------------------------------------------
          do e=1,nel
             if(out_mask(e).ne.0) then
               buffer(j+0) = vlmin(u(1,e),nxyz) 
+              umin(1) = min(buffer(j+0), umin(1))
+
               buffer(j+1) = vlmax(u(1,e),nxyz)
+              umax(1) = max(buffer(j+1), umax(1))
+
               buffer(j+2) = vlmin(v(1,e),nxyz) 
+              umin(2) = min(buffer(j+2), umin(2))
+
               buffer(j+3) = vlmax(v(1,e),nxyz)
+              umax(2) = max(buffer(j+3), umax(2))
+
               j = j + 4
               if(n.eq.6) then
-                buffer(j+0) = vlmin(w(1,e),nxyz) 
+                buffer(j+0) = vlmin(w(1,e),nxyz)
+                umin(3) = min(buffer(j+0), umin(3))
+ 
                 buffer(j+1) = vlmax(w(1,e),nxyz)
+                umax(3) = max(buffer(j+1), umax(3))
+
                 j = j + 2
               endif
               cnt = cnt + 1
@@ -1609,6 +1671,18 @@ c-----------------------------------------------------------------------
       endif
 
       call err_chk(ierr,'Error writing data to .f00 in mfo_mdatav. $')
+
+      gmin_u = glmin(umin(1), 1)
+      gmax_u = glmax(umax(1), 1)
+      gmin_v = glmin(umin(2), 1)
+      gmax_v = glmax(umax(2), 1)
+      gmin_w = glmin(umin(3), 1)
+      gmax_w = glmax(umax(3), 1)
+
+      if(nid.eq.0) write(6,'(A,6g13.5)') ' min/max:', 
+     $             gmin_u,gmax_u, 
+     $             gmin_v,gmax_v, 
+     $             gmin_w,gmax_w
 
       return
       end
@@ -1628,6 +1702,8 @@ c-----------------------------------------------------------------------
       integer cnt
       integer lbuf
 
+      real umin, umax
+
       call nekgsync() ! clear outstanding message queues.
 
       nxyz = lx1*ly1*lz1
@@ -1636,14 +1712,21 @@ c-----------------------------------------------------------------------
       lsend = 4 * (1 + n*nelt)
       ierr = 0
 
+      umin = 1e30
+      umax = -umin
+
       ! Am I an I/O node?
       if (nid.eq.pid0) then
          cnt = 0
          j = 1
          do e=1,nel
             if(out_mask(e).ne.0) then
-              buffer(j+0) = vlmin(u(1,e),nxyz) 
+              buffer(j+0) = vlmin(u(1,e),nxyz)
+              umin = min(buffer(j+0), umin)
+
               buffer(j+1) = vlmax(u(1,e),nxyz)
+              umax = max(buffer(j+1), umax)
+
               j = j + 2 
               cnt = cnt + 1
             endif
@@ -1681,7 +1764,11 @@ c-----------------------------------------------------------------------
          do e=1,nel
             if(out_mask(e).ne.0) then
               buffer(j+0) = vlmin(u(1,e),nxyz) 
+              umin = min(buffer(j+0), umin)
+
               buffer(j+1) = vlmax(u(1,e),nxyz)
+              umax = max(buffer(j+1), umax)
+
               j = j + 2
               cnt = cnt + 1
             endif
@@ -1695,6 +1782,10 @@ c-----------------------------------------------------------------------
       endif
 
       call err_chk(ierr,'Error writing data to .f00 in mfo_mdatas. $')
+
+      umin = glmin(umin, 1)
+      umax = glmax(umax, 1)
+      if(nid.eq.0) write(6,'(A,2g13.5)') ' min/max:', umin,umax
 
       return
       end
@@ -1715,11 +1806,6 @@ c-----------------------------------------------------------------------
 
       integer e
       integer cnt
-
-      umin = glmin(u,nel*mx*my*mz)
-      umax = glmax(u,nel*mx*my*mz)
-      if(nid.eq.0) write(6,'(A,2g13.5)') ' min/max:', 
-     $             umin,umax
 
       call nekgsync() ! clear outstanding message queues.
       if(mx.gt.lxo .or. my.gt.lxo .or. mz.gt.lxo) then
@@ -1831,15 +1917,6 @@ c-----------------------------------------------------------------------
 
       integer e
       integer cnt
-
-      umax = glmax(u,nel*mx*my*mz)
-      vmax = glmax(v,nel*mx*my*mz)
-      wmax = glmax(w,nel*mx*my*mz)
-      umin = glmin(u,nel*mx*my*mz)
-      vmin = glmin(v,nel*mx*my*mz)
-      wmin = glmin(w,nel*mx*my*mz)
-      if(nid.eq.0) write(6,'(A,6g13.5)') ' min/max:', 
-     $             umin,umax, vmin,vmax, wmin,wmax
 
       call nekgsync() ! clear outstanding message queues.
       if(mx.gt.lxo .or. my.gt.lxo .or. mz.gt.lxo) then
@@ -1959,7 +2036,7 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
-      subroutine mfo_write_hdr          ! write hdr, byte key, els.
+      subroutine mfo_write_hdr(varcode)          ! write hdr, byte key, els.
 
       include 'SIZE'
       include 'SOLN'
@@ -1967,6 +2044,9 @@ c-----------------------------------------------------------------------
       include 'PARALLEL'
       include 'RESTART'
       include 'TSTEP'
+
+      character varcode(10)
+
       real*4 test_pattern
       common /ctmp0/ lglist(0:lelt)
 
@@ -2001,43 +2081,14 @@ c-----------------------------------------------------------------------
         else
           mtype = nid
           call crecv(mtype,idum,4)          ! hand-shake
-          call csend(mtype,cnt,4,pid0,0)   ! u4 :=: u8
+          call csend(mtype,cnt,4,pid0,0)    ! u4 :=: u8
         endif 
       endif
 
       ierr = 0
       if(nid.eq.pid0) then
 
-      call blank(hdr,132)              ! write header
-      call blank(rdcode1,10)
-      i = 1
-      IF (IFXYO) THEN
-         rdcode1(i)='X'
-         i = i + 1
-      ENDIF
-      IF (IFVO) THEN
-         rdcode1(i)='U'
-         i = i + 1
-      ENDIF
-      IF (IFPO) THEN
-         rdcode1(i)='P'
-         i = i + 1
-      ENDIF
-      IF (IFTO) THEN
-         rdcode1(i)='T'
-         i = i + 1
-      ENDIF
-      IF (LDIMT.GT.1) THEN
-         NPSCALO = 0
-         do k = 1,ldimt-1
-           if(ifpsco(k)) NPSCALO = NPSCALO + 1
-         enddo
-         IF (NPSCALO.GT.0) THEN
-            rdcode1(i) = 'S'
-            WRITE(rdcode1(i+1),'(I1)') NPSCALO/10
-            WRITE(rdcode1(i+2),'(I1)') NPSCALO-(NPSCALO/10)*10
-         ENDIF
-      ENDIF
+      call blank(hdr,132)
 
 c     check pressure format
       if_press_mesh = .false.
@@ -2045,7 +2096,7 @@ c     check pressure format
 
       nelog = cntg 
       write(hdr,1) wdsizo,nxo,nyo,nzo,nelo,nelog,time,istep,fid0,nfileoo
-     $            ,(rdcode1(i),i=1,10),p0th,if_press_mesh
+     $            ,(varcode(i),i=1,10),p0th,if_press_mesh
     1 format('#std',1x,i1,1x,i2,1x,i2,1x,i2,1x,i10,1x,i10,1x,e20.13,
      &       1x,i9,1x,i6,1x,i6,1x,10a,1pe15.7,1x,l1)
 
