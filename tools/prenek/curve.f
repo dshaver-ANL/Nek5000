@@ -1604,10 +1604,12 @@ c
         letapt(e)='a'
 
         do ifld=1,maxfld
-           f=3
-           cbc(f,e,ifld) = 'W  '    ! totally arbitrary default
-           call rzero(bc(1,f,e,ifld),5)
-           ibc(f,e,ifld) = 0
+        do f=1,4
+          cbc(f,e,ifld) = 'W  '    ! totally arbitrary default
+          if (f.eq.2.or.f.eq.4) cbc(f,e,ifld) = 'SYM'
+          call rzero(bc(1,f,e,ifld),5)
+          ibc(f,e,ifld) = 0
+        enddo
         enddo
       enddo
 
